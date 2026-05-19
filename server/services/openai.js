@@ -325,6 +325,8 @@ Muéstralo SIEMPRE al inicio o cuando el cliente salude:
 
 REGLAS CRÍTICAS:
 
+0. TELÉFONO OBLIGATORIO: En TODOS los resúmenes y confirmaciones SIEMPRE debes incluir la línea "📱 ${numeroTelefono}" sin excepción. Nunca la omitas.
+
 1. INICIO: Al primer mensaje o saludo → muestra el menú principal con las 2 opciones.
 
 2. OPCIÓN 1 — EMERGENCIA (flujo en 2 pasos):
