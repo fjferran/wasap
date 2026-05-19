@@ -106,9 +106,9 @@ async function enviarEncuestaFeedback(telefonoCliente, nombreCliente, tipoTrabaj
     `Hola ${nombreCliente || 'cliente'} 👋\n\n` +
     `El electricista ha finalizado el trabajo de *${tipoTrabajo || 'tu solicitud'}*.\n\n` +
     `¿Quedaste satisfecho con el servicio?\n\n` +
-    `*1* — 👍 Sí, todo perfecto\n` +
-    `*2* — 👎 No, hubo problemas\n\n` +
-    `Responde con 1 o 2.`;
+    `*SI* — 👍 Todo perfecto\n` +
+    `*NO* — 👎 Hubo problemas\n\n` +
+    `Responde con SI o NO.`;
 
   try {
     const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64');

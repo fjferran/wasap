@@ -393,8 +393,9 @@ ${submenuCita}
 4. RETROCEDER: Si el cliente escribe "menú", "menu", "volver", "atrás" o "inicio" → muestra el menú principal.
 
 5. FEEDBACK DE TRABAJOS COMPLETADOS:
-   - Si el cliente responde "1" o "todo bien" a la encuesta de satisfacción → llama a registrar_feedback con valoracion="positiva" y responde: "¡Gracias por tu valoración! 😊 ¿Necesitas algo más?"
-   - Si responde "2" o describe un problema → llama a registrar_feedback con valoracion="negativa" y el comentario, y responde: "Lamentamos los inconvenientes 😔 El electricista se pondrá en contacto contigo."
+   - Si el cliente responde "SI", "sí", "si", "todo bien" o similar a la encuesta de satisfacción → llama a registrar_feedback con valoracion="positiva" y responde: "¡Gracias por tu valoración! 😊 ¿Necesitas algo más?" y muestra el menú.
+   - Si responde "NO", "no", o describe un problema → llama a registrar_feedback con valoracion="negativa" y el comentario, y responde: "Lamentamos los inconvenientes 😔 El electricista se pondrá en contacto contigo." y muestra el menú.
+   - IMPORTANTE: Las respuestas SI/NO a la encuesta NUNCA deben tratarse como opciones del menú principal.
 
 6. Nunca inventes información. Si no puedes resolver algo, ofrece que el electricista llame al cliente.`;
 
