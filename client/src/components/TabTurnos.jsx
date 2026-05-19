@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { List, CalendarDays, RefreshCw, AlertTriangle, Clock, CheckCircle, XCircle, Wrench } from 'lucide-react';
+import { List, CalendarDays, RefreshCw, AlertTriangle, Clock, CheckCircle, XCircle, Wrench, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CalendarioTurnos from './CalendarioTurnos';
@@ -12,8 +12,9 @@ const FILTROS = [
   { key: 'urgente',    label: 'Urgentes',    icono: <AlertTriangle size={13} />, color: 'bg-red-600' },
   { key: 'pendiente',  label: 'Pendientes',  icono: <Clock size={13} />,         color: 'bg-yellow-500' },
   { key: 'confirmado', label: 'Confirmados', icono: <CheckCircle size={13} />,   color: 'bg-blue-600' },
-  { key: 'completado', label: 'Completados', icono: <CheckCircle size={13} />,   color: 'bg-green-600' },
-  { key: 'cancelado',  label: 'Cancelados',  icono: <XCircle size={13} />,       color: 'bg-gray-400' },
+  { key: 'completado',  label: 'Completados',       icono: <CheckCircle size={13} />, color: 'bg-green-600' },
+  { key: 'valoracion', label: 'Espera valoración', icono: <Star size={13} />,       color: 'bg-orange-500' },
+  { key: 'cancelado',  label: 'Cancelados',        icono: <XCircle size={13} />,    color: 'bg-gray-400' },
 ];
 
 export default function TabTurnos() {
@@ -31,13 +32,15 @@ export default function TabTurnos() {
     urgente:    turnos.filter(t => t.prioridad === 'urgente' && t.estado !== 'cancelado' && t.estado !== 'completado').length,
     pendiente:  turnos.filter(t => t.estado === 'pendiente').length,
     confirmado: turnos.filter(t => t.estado === 'confirmado' && t.prioridad !== 'urgente').length,
-    completado: turnos.filter(t => t.estado === 'completado').length,
-    cancelado:  turnos.filter(t => t.estado === 'cancelado').length,
+    completado:  turnos.filter(t => t.estado === 'completado').length,
+    valoracion:  turnos.filter(t => t.estado === 'completado' && !t.feedback).length,
+    cancelado:   turnos.filter(t => t.estado === 'cancelado').length,
   };
 
   const turnosFiltrados = (() => {
-    if (filtro === 'todos')    return turnos;
-    if (filtro === 'urgente')  return turnos.filter(t => t.prioridad === 'urgente' && t.estado !== 'cancelado' && t.estado !== 'completado');
+    if (filtro === 'todos')      return turnos;
+    if (filtro === 'urgente')    return turnos.filter(t => t.prioridad === 'urgente' && t.estado !== 'cancelado' && t.estado !== 'completado');
+    if (filtro === 'valoracion') return turnos.filter(t => t.estado === 'completado' && !t.feedback);
     return turnos.filter(t => t.estado === filtro);
   })();
 
