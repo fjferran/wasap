@@ -27,11 +27,12 @@ const herramientas = [
     type: 'function',
     function: {
       name: 'consultar_disponibilidad',
-      description: 'Consulta los horarios disponibles para agendar un trabajo en una fecha específica',
+      description: 'Consulta los horarios disponibles para agendar un trabajo en una fecha específica. Llama SIEMPRE que el cliente proponga una fecha u hora concreta para verificar si el hueco está libre antes de continuar.',
       parameters: {
         type: 'object',
         properties: {
           fecha: { type: 'string', description: 'Fecha a consultar en formato YYYY-MM-DD' },
+          hora_solicitada: { type: 'string', description: 'Hora específica que el cliente ha pedido en formato HH:MM (opcional). Si se incluye, la respuesta indicará si está libre y sugerirá las 3 alternativas más cercanas si está ocupada.' },
         },
         required: ['fecha'],
       },
@@ -132,7 +133,7 @@ async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTele
     }
 
     case 'consultar_disponibilidad': {
-      const { fecha } = argumentos;
+      const { fecha, hora_solicitada } = argumentos;
       const turnosDelDia = db.prepare(`
         SELECT fecha_turno FROM turnos
         WHERE date(fecha_turno) = date(?) AND estado != 'cancelado'
@@ -146,12 +147,40 @@ async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTele
       const todosLosHorarios = generarHorariosDelDia();
       const horariosLibres = todosLosHorarios.filter(h => !horariosOcupados.includes(h));
 
-      return {
+      const resultado = {
         fecha,
         horarios_disponibles: horariosLibres,
         horarios_ocupados: horariosOcupados,
         total_disponibles: horariosLibres.length,
       };
+
+      // Si el cliente pidió una hora concreta, indicar si está libre y sugerir alternativas
+      if (hora_solicitada) {
+        const horaNorm = hora_solicitada.length === 5 ? hora_solicitada : hora_solicitada.substring(0, 5);
+        const libre = !horariosOcupados.includes(horaNorm);
+        resultado.hora_solicitada = horaNorm;
+        resultado.hora_solicitada_disponible = libre;
+
+        if (!libre) {
+          const idx = todosLosHorarios.indexOf(horaNorm);
+          const alternativas = [];
+          let left = idx - 1;
+          let right = idx + 1;
+          while (alternativas.length < 3 && (left >= 0 || right < todosLosHorarios.length)) {
+            if (right < todosLosHorarios.length && !horariosOcupados.includes(todosLosHorarios[right])) {
+              alternativas.push(todosLosHorarios[right]);
+            }
+            if (left >= 0 && !horariosOcupados.includes(todosLosHorarios[left])) {
+              alternativas.push(todosLosHorarios[left]);
+            }
+            left--;
+            right++;
+          }
+          resultado.alternativas_cercanas = alternativas.sort();
+        }
+      }
+
+      return resultado;
     }
 
     case 'ver_solicitudes_cliente': {
@@ -365,7 +394,15 @@ ${submenuCita}
       🔙 Escribe *menú* para volver"
    b) Tras elegir tipo → recoge estos datos UNO POR UNO (una pregunta por mensaje):
       - Nombre completo
-      - Fecha y hora preferida (consulta disponibilidad con consultar_disponibilidad si da una fecha)
+      - Fecha y hora preferida → en cuanto el cliente proponga fecha u hora, llama a consultar_disponibilidad con esa fecha y hora_solicitada.
+        * Si hora_solicitada_disponible=true → confirma "✅ El hueco de las HH:MM del DÍA está libre." y sigue.
+        * Si hora_solicitada_disponible=false → informa "❌ Las HH:MM del DÍA ya están reservadas." y propón las alternativas_cercanas:
+          "¿Te viene bien alguna de estas horas?
+          ⏰ HH:MM
+          ⏰ HH:MM
+          ⏰ HH:MM"
+          Espera que elija un nuevo hueco libre antes de continuar.
+        * Si el cliente solo da fecha sin hora → muestra los horarios_disponibles del día y pide que elija.
       - Dirección donde realizar el trabajo
       - Descripción breve del problema o trabajo
    c) Con todos los datos → muestra resumen y pide confirmación ANTES de registrar:
