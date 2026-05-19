@@ -15,12 +15,11 @@ const herramientas = [
       parameters: {
         type: 'object',
         properties: {
-          numero_telefono: { type: 'string', description: 'Número de teléfono del cliente' },
           nombre_cliente: { type: 'string', description: 'Nombre del cliente' },
           descripcion_emergencia: { type: 'string', description: 'Descripción detallada de la emergencia' },
           direccion: { type: 'string', description: 'Dirección donde ocurre la emergencia' },
         },
-        required: ['numero_telefono', 'descripcion_emergencia'],
+        required: ['descripcion_emergencia'],
       },
     },
   },
@@ -42,13 +41,11 @@ const herramientas = [
     type: 'function',
     function: {
       name: 'ver_solicitudes_cliente',
-      description: 'Muestra todas las solicitudes activas de un cliente',
+      description: 'Muestra todas las solicitudes activas del cliente actual',
       parameters: {
         type: 'object',
-        properties: {
-          numero_telefono: { type: 'string', description: 'Número de teléfono del cliente' },
-        },
-        required: ['numero_telefono'],
+        properties: {},
+        required: [],
       },
     },
   },
@@ -60,14 +57,13 @@ const herramientas = [
       parameters: {
         type: 'object',
         properties: {
-          numero_telefono: { type: 'string', description: 'Número de teléfono del cliente' },
           nombre_cliente: { type: 'string', description: 'Nombre completo del cliente' },
           fecha_trabajo: { type: 'string', description: 'Fecha y hora en formato ISO (YYYY-MM-DDTHH:MM:SS)' },
           tipo_trabajo: { type: 'string', description: 'Tipo de trabajo: Instalación nueva, Reparación / avería, Presupuesto / visita técnica' },
           direccion: { type: 'string', description: 'Dirección donde se realizará el trabajo' },
           notas: { type: 'string', description: 'Descripción adicional del trabajo (opcional)' },
         },
-        required: ['numero_telefono', 'nombre_cliente', 'fecha_trabajo', 'tipo_trabajo'],
+        required: ['nombre_cliente', 'fecha_trabajo', 'tipo_trabajo'],
       },
     },
   },
@@ -79,11 +75,10 @@ const herramientas = [
       parameters: {
         type: 'object',
         properties: {
-          numero_telefono: { type: 'string', description: 'Número de teléfono del cliente' },
           valoracion: { type: 'string', enum: ['positiva', 'negativa'], description: 'Valoración del cliente' },
           comentario: { type: 'string', description: 'Comentario o motivo del problema (opcional)' },
         },
-        required: ['numero_telefono', 'valoracion'],
+        required: ['valoracion'],
       },
     },
   },
@@ -105,6 +100,8 @@ const herramientas = [
 
 // Ejecuta la herramienta correspondiente contra la base de datos
 async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTelefono) {
+  // Siempre usar el número real del webhook, ignorar lo que pase la IA
+  if (numeroTelefono) argumentos.numero_telefono = numeroTelefono;
   console.log(`[OpenAI] Ejecutando herramienta: ${nombre}`, argumentos);
 
   switch (nombre) {
@@ -313,6 +310,7 @@ Información del negocio:
 - Email: ${email || 'Consultar por WhatsApp'}
 - Horarios: ${horarios || 'Lunes a Viernes 8:00-18:00, Emergencias 24/7'}
 - Sobre nosotros: ${sobre_negocio || 'Servicio eléctrico profesional'}
+- Número de WhatsApp del cliente actual: ${numeroTelefono} (ya lo tienes, NUNCA lo pidas al cliente)
 
 ═══════════════════════════════
 MENÚ PRINCIPAL
