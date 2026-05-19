@@ -46,12 +46,11 @@ function obtenerDiaSemana(fecha) {
   return DIAS_SEMANA[new Date(fecha).getDay()];
 }
 
-// Genera los horarios disponibles del día (de 9:00 a 18:00, cada 30 min)
+// Genera los horarios disponibles del día (de 9:00 a 18:00, cada hora)
 function generarHorariosDelDia() {
   const horarios = [];
   for (let hora = 9; hora < 18; hora++) {
     horarios.push(`${String(hora).padStart(2, '0')}:00`);
-    horarios.push(`${String(hora).padStart(2, '0')}:30`);
   }
   return horarios;
 }
