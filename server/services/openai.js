@@ -337,6 +337,7 @@ REGLAS CRÍTICAS:
    c) Con todos los datos → muestra resumen y pide confirmación final:
       "📋 Resumen de tu emergencia:
       👤 [nombre]
+      📱 ${numeroTelefono}
       📍 [dirección]
       ⚡ [descripción]
 
@@ -361,6 +362,7 @@ ${submenuCita}
    c) Con todos los datos → muestra resumen y pide confirmación ANTES de registrar:
       "📋 Resumen de tu solicitud:
       👤 [nombre]
+      📱 ${numeroTelefono}
       🔧 [tipo de trabajo]
       📅 [fecha y hora]
       📍 [dirección]
