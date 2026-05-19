@@ -21,7 +21,7 @@ const ESTILOS = {
   urgente:    { pill: 'bg-red-500 text-white',   dot: 'bg-red-500',   ring: 'ring-red-300',   label: 'Emergencia' },
   pendiente:  { pill: 'bg-amber-400 text-white', dot: 'bg-amber-400', ring: 'ring-amber-200', label: 'Pendiente'  },
   confirmado: { pill: 'bg-blue-500 text-white',  dot: 'bg-blue-500',  ring: 'ring-blue-200',  label: 'Confirmado' },
-  completado: { pill: 'bg-green-500 text-white', dot: 'bg-green-500', ring: 'ring-green-200', label: 'Completado' },
+  completado: { pill: 'bg-gray-400 text-white',  dot: 'bg-gray-400',  ring: 'ring-gray-200',  label: 'Completado' },
   cancelado:  { pill: 'bg-gray-300 text-gray-600', dot: 'bg-gray-400', ring: 'ring-gray-200', label: 'Cancelado' },
 };
 
@@ -40,6 +40,11 @@ function formatFechaLarga(fechaStr) {
   try { return format(new Date(fechaStr), "d 'de' MMMM 'de' yyyy, HH:mm", { locale: es }); } catch { return fechaStr; }
 }
 
+// Devuelve la fecha a usar en el calendario: fecha_turno si existe, o creado_en (para emergencias)
+function getFechaCalendario(turno) {
+  return turno.fecha_turno ? new Date(turno.fecha_turno) : new Date(turno.creado_en);
+}
+
 // ── Chip pequeño para las celdas del calendario ───────────────────────────────
 function ChipTurno({ turno, onClick, seleccionado }) {
   const e = estiloTurno(turno);
@@ -50,7 +55,7 @@ function ChipTurno({ turno, onClick, seleccionado }) {
         ${e.pill} ${seleccionado ? `ring-2 ${e.ring} ring-offset-1` : 'hover:opacity-80'}`}
       title={`${turno.nombre_paciente || 'Sin nombre'} — ${turno.tipo_turno || ''}`}
     >
-      {turno.fecha_turno && <span className="opacity-75 mr-1">{formatHora(turno.fecha_turno)}</span>}
+      {turno.fecha_turno && turno.prioridad !== 'urgente' && <span className="opacity-75 mr-1">{formatHora(turno.fecha_turno)}</span>}
       {turno.prioridad === 'urgente' && turno.estado !== 'completado' ? '🚨 ' : ''}
       {turno.nombre_paciente || 'Sin nombre'}
     </button>
@@ -62,11 +67,11 @@ function CeldaDia({ fecha, turnos, mesActual, seleccionada, turnoSeleccionado, o
   const esMesActual = isSameMonth(fecha, mesActual);
   const esHoy = isToday(fecha);
   const turnosDia = turnos
-    .filter(t => t.fecha_turno && isSameDay(new Date(t.fecha_turno), fecha))
+    .filter(t => isSameDay(getFechaCalendario(t), fecha))
     .sort((a, b) => {
       if (a.prioridad === 'urgente') return -1;
       if (b.prioridad === 'urgente') return 1;
-      return new Date(a.fecha_turno) - new Date(b.fecha_turno);
+      return getFechaCalendario(a) - getFechaCalendario(b);
     });
 
   const MAX_VISIBLE = 3;
@@ -118,11 +123,11 @@ function PanelDetalle({ fecha, turnos, turnoSeleccionado, onSelectTurno }) {
   });
 
   const turnosDia = turnos
-    .filter(t => t.fecha_turno && isSameDay(new Date(t.fecha_turno), fecha))
+    .filter(t => isSameDay(getFechaCalendario(t), fecha))
     .sort((a, b) => {
       if (a.prioridad === 'urgente') return -1;
       if (b.prioridad === 'urgente') return 1;
-      return new Date(a.fecha_turno) - new Date(b.fecha_turno);
+      return getFechaCalendario(a) - getFechaCalendario(b);
     });
 
   const turnoActivo = turnoSeleccionado && turnosDia.find(t => t.id === turnoSeleccionado.id)
@@ -160,7 +165,7 @@ function PanelDetalle({ fecha, turnos, turnoSeleccionado, onSelectTurno }) {
                 onClick={() => onSelectTurno(turno)}
                 className={`rounded-xl border-2 p-3 cursor-pointer transition-all
                   ${seleccionado ? `border-current ring-2 ${e.ring}` : 'border-gray-100 hover:border-gray-200'}
-                  ${esUrgente && !esCancelado && !esCompletado ? 'bg-red-50' : esCancelado ? 'bg-gray-50 opacity-60' : esCompletado ? 'bg-green-50' : 'bg-white'}`}
+                  ${esUrgente && !esCancelado && !esCompletado ? 'bg-red-50' : esCancelado ? 'bg-gray-50 opacity-60' : esCompletado ? 'bg-gray-50' : 'bg-white'}`}
               >
                 {/* Indicador de color + hora */}
                 <div className="flex items-center gap-2 mb-2">
@@ -285,16 +290,16 @@ export default function CalendarioTurnos({ turnos = [] }) {
 
   const handleSelectTurno = (turno) => {
     setTurnoSeleccionado(turno);
-    if (turno.fecha_turno) setFechaSeleccionada(new Date(turno.fecha_turno));
+    setFechaSeleccionada(getFechaCalendario(turno));
   };
 
-  // Turnos sin fecha asignada
-  const sinFecha = turnos.filter(t => !t.fecha_turno && t.estado !== 'cancelado');
+  // Todos los turnos tienen fecha (fecha_turno o creado_en), nada queda sin asignar
+  const sinFecha = [];
 
-  // Turnos con fecha fuera del mes visible (activos o pasados sin completar)
+  // Turnos con fecha fuera del mes visible
   const fueraDelMes = turnos.filter(t => {
-    if (!t.fecha_turno || t.estado === 'cancelado') return false;
-    return !isSameMonth(new Date(t.fecha_turno), mesActual);
+    if (t.estado === 'cancelado') return false;
+    return !isSameMonth(getFechaCalendario(t), mesActual);
   });
 
   const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -415,13 +420,14 @@ export default function CalendarioTurnos({ turnos = [] }) {
               <div className="flex flex-col gap-1.5">
                 {fueraDelMes.map(t => {
                   const e = estiloTurno(t);
-                  const fechaPasada = new Date(t.fecha_turno) < new Date();
+                  const fechaCal = getFechaCalendario(t);
+                  const fechaPasada = fechaCal < new Date();
                   return (
                     <button
                       key={t.id}
                       onClick={() => {
-                        setMesActual(new Date(t.fecha_turno));
-                        setFechaSeleccionada(new Date(t.fecha_turno));
+                        setMesActual(fechaCal);
+                        setFechaSeleccionada(fechaCal);
                         setTurnoSeleccionado(t);
                       }}
                       className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80 text-left
@@ -431,7 +437,7 @@ export default function CalendarioTurnos({ turnos = [] }) {
                       <span className="font-semibold">{t.nombre_paciente || 'Sin nombre'}</span>
                       <span className="opacity-75">—</span>
                       <span className={fechaPasada ? 'line-through opacity-60' : ''}>
-                        {format(new Date(t.fecha_turno), "d MMM yyyy", { locale: es })}
+                        {format(fechaCal, "d MMM yyyy", { locale: es })}
                       </span>
                       {fechaPasada && <span className="opacity-75 text-xs">(fecha pasada)</span>}
                     </button>
