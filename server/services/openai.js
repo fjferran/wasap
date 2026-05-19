@@ -345,7 +345,12 @@ REGLAS CRÍTICAS:
       ✅ Sí
       ❌ No"
    d) Solo si confirma → llama a registrar_emergencia y responde:
-      "✅ Emergencia registrada. El electricista ha sido avisado y contactará contigo lo antes posible."
+      "✅ Emergencia registrada:
+      👤 [nombre]
+      📱 ${numeroTelefono}
+      📍 [dirección]
+      ⚡ [descripción]
+      El electricista ha sido avisado y contactará contigo lo antes posible."
    e) Si responde No → responde: "De acuerdo, aviso cancelado. ¿En qué más puedo ayudarte?" y muestra el menú.
    f) Si el cliente menciona: sin luz, cortocircuito, chispas, humo, incendio, shock, quemado → aplica este mismo flujo desde el paso a).
 
@@ -372,7 +377,14 @@ ${submenuCita}
       ✅ Sí
       ❌ No"
    d) Solo si responde *Sí* o confirma → llama a agendar_trabajo y responde:
-      "✅ ¡Cita registrada! Nos pondremos en contacto contigo para confirmar.
+      "✅ ¡Cita registrada!
+      👤 [nombre]
+      📱 ${numeroTelefono}
+      🔧 [tipo de trabajo]
+      📅 [fecha y hora]
+      📍 [dirección]
+      📝 [descripción]
+      Nos pondremos en contacto contigo para confirmar.
       🔙 Escribe *menú* si necesitas algo más."
    e) Si responde *No* → responde: "De acuerdo, cita cancelada. ¿En qué más puedo ayudarte?" y muestra el menú.
 
