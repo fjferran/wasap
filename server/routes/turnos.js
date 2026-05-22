@@ -120,7 +120,22 @@ router.put('/:id', async (req, res) => {
         telefonoReal,
         turnoExistente.nombre_paciente,
         turnoExistente.tipo_turno
-      ).catch(err => console.error('[Turnos] Error enviando encuesta:', err));
+      ).then(enviado => {
+        if (enviado) {
+          const textoEncuesta =
+            `✅ Trabajo completado\n\n` +
+            `Hola ${turnoExistente.nombre_paciente || 'cliente'} 👋\n\n` +
+            `El electricista ha finalizado el trabajo de ${turnoExistente.tipo_turno || 'tu solicitud'}.\n\n` +
+            `¿Quedaste satisfecho con el servicio?\n\n` +
+            `SI — 👍 Todo perfecto\n` +
+            `NO — 👎 Hubo problemas\n\n` +
+            `Responde con SI o NO y si hay algún problema te pediremos que nos cuentes qué ocurrió.`;
+          db.prepare(`
+            INSERT INTO mensajes_whatsapp (numero_telefono, contenido_mensaje, remitente, tipo_mensaje, procesado)
+            VALUES (?, ?, 'asistente', 'texto', 1)
+          `).run(telefonoReal, textoEncuesta);
+        }
+      }).catch(err => console.error('[Turnos] Error enviando encuesta:', err));
     }
   } catch (error) {
     console.error('[Turnos] Error al actualizar turno:', error);
