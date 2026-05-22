@@ -108,7 +108,7 @@ async function enviarEncuestaFeedback(telefonoCliente, nombreCliente, tipoTrabaj
     `¿Quedaste satisfecho con el servicio?\n\n` +
     `*SI* — 👍 Todo perfecto\n` +
     `*NO* — 👎 Hubo problemas\n\n` +
-    `Responde con SI o NO.`;
+    `Responde con *SI* o *NO* y si hay algún problema te pediremos que nos cuentes qué ocurrió.`;
 
   try {
     const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
@@ -139,9 +139,69 @@ async function enviarEncuestaFeedback(telefonoCliente, nombreCliente, tipoTrabaj
   }
 }
 
+// Notifica al electricista cuando un cliente deja feedback negativo
+async function notificarFeedbackNegativo(telefonoElectricista, datosCliente) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+
+  if (!accountSid || !authToken) {
+    console.warn('[Twilio] Credenciales no configuradas — no se envió notificación de feedback negativo');
+    return false;
+  }
+
+  if (!telefonoElectricista) {
+    console.warn('[Twilio] No hay teléfono de notificación configurado');
+    return false;
+  }
+
+  const { telefono, comentario } = datosCliente;
+
+  const mensaje =
+    `👎 *VALORACIÓN NEGATIVA*\n\n` +
+    `Un cliente ha indicado que hubo problemas con el trabajo.\n\n` +
+    `📱 Teléfono: ${telefono}\n` +
+    (comentario ? `💬 Comentario: ${comentario}\n\n` : '\n') +
+    `Contacta con el cliente para resolver la incidencia.`;
+
+  try {
+    const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const toNumber = telefonoElectricista.startsWith('whatsapp:')
+      ? telefonoElectricista
+      : `whatsapp:${telefonoElectricista}`;
+
+    const body = new URLSearchParams({ From: fromNumber, To: toNumber, Body: mensaje });
+
+    const respuesta = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      }
+    );
+
+    if (respuesta.ok) {
+      console.log('[Twilio] Notificación de feedback negativo enviada al electricista');
+      return true;
+    } else {
+      const error = await respuesta.json();
+      console.error('[Twilio] Error enviando notificación de feedback negativo:', error.message);
+      return false;
+    }
+  } catch (error) {
+    console.error('[Twilio] Error de red al enviar notificación de feedback negativo:', error.message);
+    return false;
+  }
+}
+
 module.exports = {
   generarRespuestaTwiML,
   generarRespuestaError,
   notificarEmergencia,
   enviarEncuestaFeedback,
+  notificarFeedbackNegativo,
 };

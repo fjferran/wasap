@@ -1,7 +1,7 @@
 const OpenAI = require('openai');
 const db = require('../db');
 const { generarHorariosDelDia, formatearFechaLarga } = require('../utils/fechas');
-const { notificarEmergencia } = require('./twilio');
+const { notificarEmergencia, notificarFeedbackNegativo } = require('./twilio');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -71,8 +71,16 @@ const herramientas = [
   {
     type: 'function',
     function: {
+      name: 'buscar_cliente',
+      description: 'Busca si el cliente actual está registrado en la base de datos por su número de teléfono. Llama SIEMPRE al inicio del flujo de cita (Opción 2) y del flujo de emergencia (Opción 1), antes de pedir cualquier dato.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'registrar_feedback',
-      description: 'Registra la valoración del cliente sobre un trabajo completado. Úsala cuando el cliente responda a la encuesta de satisfacción con "1" (positiva) o "2" / descripción de problemas (negativa).',
+      description: 'Registra la valoración del cliente sobre un trabajo completado. Úsala cuando el cliente responda a la encuesta de satisfacción con "SI" / afirmación (positiva) o "NO" / descripción de problemas (negativa).',
       parameters: {
         type: 'object',
         properties: {
@@ -106,6 +114,23 @@ async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTele
   console.log(`[OpenAI] Ejecutando herramienta: ${nombre}`, argumentos);
 
   switch (nombre) {
+
+    case 'buscar_cliente': {
+      const cliente = db.prepare(
+        'SELECT * FROM clientes WHERE numero_telefono = ? OR numero_telefono LIKE ?'
+      ).get(numeroTelefono, `%${numeroTelefono}`);
+
+      if (cliente) {
+        return {
+          registrado: true,
+          nombre: cliente.nombre,
+          direccion: cliente.direccion || null,
+          email: cliente.email || null,
+          notas: cliente.notas || null,
+        };
+      }
+      return { registrado: false };
+    }
 
     case 'registrar_emergencia': {
       const { numero_telefono, nombre_cliente, descripcion_emergencia, direccion } = argumentos;
@@ -205,7 +230,32 @@ async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTele
     }
 
     case 'agendar_trabajo': {
-      const { numero_telefono, nombre_cliente, fecha_trabajo, tipo_trabajo, direccion, notas } = argumentos;
+      let { numero_telefono, nombre_cliente, fecha_trabajo, tipo_trabajo, direccion, notas } = argumentos;
+
+      // Si faltan nombre o dirección, completar desde el registro de clientes
+      if (!nombre_cliente || !direccion) {
+        const clienteRegistrado = db.prepare(
+          'SELECT * FROM clientes WHERE numero_telefono = ? OR numero_telefono LIKE ?'
+        ).get(numero_telefono, `%${numero_telefono}`);
+        if (clienteRegistrado) {
+          nombre_cliente = nombre_cliente || clienteRegistrado.nombre;
+          direccion = direccion || clienteRegistrado.direccion;
+        }
+      }
+
+      // Guardia: el cliente no puede tener otra cita activa
+      const citaActivaCliente = db.prepare(`
+        SELECT id, tipo_turno, fecha_turno FROM turnos
+        WHERE numero_telefono = ? AND estado IN ('pendiente', 'confirmado') AND prioridad = 'normal'
+        ORDER BY fecha_turno ASC LIMIT 1
+      `).get(numero_telefono);
+
+      if (citaActivaCliente) {
+        return {
+          exito: false,
+          mensaje: `El cliente ya tiene una cita activa (#${citaActivaCliente.id}). Debe cancelarla antes de agendar una nueva.`,
+        };
+      }
 
       const turnoExistente = db.prepare(`
         SELECT id FROM turnos WHERE fecha_turno = ? AND estado != 'cancelado'
@@ -268,12 +318,19 @@ async function ejecutarHerramienta(nombre, argumentos, configuracion, numeroTele
         db.prepare("UPDATE turnos SET feedback = ? WHERE id = ?").run(feedbackTexto, turno.id);
       }
 
+      if (valoracion === 'negativa') {
+        await notificarFeedbackNegativo(configuracion.telefono_notificacion, {
+          telefono: telBusqueda,
+          comentario,
+        });
+      }
+
       return {
         exito: true,
         valoracion,
         mensaje: valoracion === 'positiva'
           ? 'Valoración positiva registrada'
-          : 'Incidencia registrada, se notificará al electricista',
+          : 'Incidencia registrada, electricista notificado',
       };
     }
 
@@ -361,7 +418,10 @@ REGLAS CRÍTICAS:
 1. INICIO: Al primer mensaje o saludo → muestra el menú principal con las 2 opciones.
 
 2. OPCIÓN 1 — EMERGENCIA (flujo en 2 pasos):
-   a) Muestra confirmación:
+   a) Llama a buscar_cliente() para saber si el cliente está registrado.
+   - Si registrado=true → ya tienes su nombre y dirección; solo pide la descripción de la emergencia.
+   - Si registrado=false → pide los datos UNO POR UNO: nombre, dirección y descripción.
+   b) Muestra confirmación:
       "⚡ Vas a reportar una EMERGENCIA ELÉCTRICA.
       ¿Confirmas que necesitas atención urgente ahora mismo?
       ✅ Sí, es una emergencia
@@ -388,11 +448,39 @@ REGLAS CRÍTICAS:
    f) Si el cliente menciona: sin luz, cortocircuito, chispas, humo, incendio, shock, quemado → aplica este mismo flujo desde el paso a).
 
 3. OPCIÓN 2 — PEDIR CITA (flujo guiado):
-   a) Muestra el submenú de tipo de servicio:
+   a) Llama a buscar_cliente() Y a ver_solicitudes_cliente() a la vez para conocer si el cliente está registrado y si ya tiene citas.
+
+      CLIENTE REGISTRADO (registrado=true):
+      - Salúdale por su nombre y muestra sus datos guardados:
+        "¡Hola [nombre]! Te tenemos en nuestro registro 👋
+        📍 Dirección: [dirección]
+        ¿Continuamos con estos datos o quieres modificarlos?
+        ✅ Continuar
+        ✏️ Modificar datos"
+      - Si confirma → en el flujo de cita solo necesitas preguntarle TIPO DE TRABAJO y FECHA/HORA. El nombre y la dirección ya los tienes.
+      - Si quiere modificar → pide nombre y dirección nuevos UNO POR UNO.
+
+      CLIENTE NUEVO (registrado=false):
+      - Flujo normal: pide todos los datos UNO POR UNO (nombre, fecha/hora, dirección, descripción).
+
+      CITA ACTIVA PREVIA (independiente de si está registrado):
+      - Si tiene citas activas → muéstraselas y pregunta:
+        "📅 Ya tienes una cita activa:
+        🔧 [tipo de trabajo]
+        📅 [fecha y hora]
+
+        Para pedir una nueva cita primero debes cancelar la anterior.
+        ¿Quieres cancelarla?
+        ✅ Sí, cancelar y pedir nueva cita
+        ❌ No, mantener la cita actual"
+        * Si confirma cancelar → llama a cancelar_solicitud con el ID y continúa al paso b).
+        * Si no cancela → responde "De acuerdo, tu cita se mantiene. ¿En qué más puedo ayudarte?" y muestra el menú. NO continúes con el flujo de agendar.
+      - Si NO tiene citas activas → continúa directamente al paso b).
+   b) Muestra el submenú de tipo de servicio:
       "📅 ¿Qué tipo de trabajo necesitas?
 ${submenuCita}
       🔙 Escribe *menú* para volver"
-   b) Tras elegir tipo → recoge estos datos UNO POR UNO (una pregunta por mensaje):
+   c) Tras elegir tipo → recoge estos datos UNO POR UNO (una pregunta por mensaje):
       - Nombre completo
       - Fecha y hora preferida → en cuanto el cliente proponga fecha u hora, llama a consultar_disponibilidad con esa fecha y hora_solicitada.
         * Si hora_solicitada_disponible=true → confirma "✅ El hueco de las HH:MM del DÍA está libre." y sigue.
@@ -405,7 +493,7 @@ ${submenuCita}
         * Si el cliente solo da fecha sin hora → muestra los horarios_disponibles del día y pide que elija.
       - Dirección donde realizar el trabajo
       - Descripción breve del problema o trabajo
-   c) Con todos los datos → muestra resumen y pide confirmación ANTES de registrar:
+   d) Con todos los datos → muestra resumen y pide confirmación ANTES de registrar:
       "📋 Resumen de tu solicitud:
       👤 [nombre]
       📱 ${numeroTelefono}
@@ -417,7 +505,7 @@ ${submenuCita}
       ¿Confirmas la cita?
       ✅ Sí
       ❌ No"
-   d) Solo si responde *Sí* o confirma → llama a agendar_trabajo y responde:
+   e) Solo si responde *Sí* o confirma → llama a agendar_trabajo y responde:
       "✅ ¡Cita registrada!
       👤 [nombre]
       📱 ${numeroTelefono}
@@ -427,13 +515,14 @@ ${submenuCita}
       📝 [descripción]
       Nos pondremos en contacto contigo para confirmar.
       🔙 Escribe *menú* si necesitas algo más."
-   e) Si responde *No* → responde: "De acuerdo, cita cancelada. ¿En qué más puedo ayudarte?" y muestra el menú.
+   f) Si responde *No* → responde: "De acuerdo, cita cancelada. ¿En qué más puedo ayudarte?" y muestra el menú.
 
 4. RETROCEDER: Si el cliente escribe "menú", "menu", "volver", "atrás" o "inicio" → muestra el menú principal.
 
 5. FEEDBACK DE TRABAJOS COMPLETADOS:
    - Si el cliente responde "SI", "sí", "si", "todo bien" o similar a la encuesta de satisfacción → llama a registrar_feedback con valoracion="positiva" y responde SOLO: "¡Gracias por tu valoración! 😊 Si necesitas algo más, escribe *menú*."
-   - Si responde "NO", "no", o describe un problema → llama a registrar_feedback con valoracion="negativa" y el comentario, y responde SOLO: "Lamentamos los inconvenientes 😔 El electricista se pondrá en contacto contigo. Si necesitas algo más, escribe *menú*."
+   - Si responde "NO" o "no" (sin más detalle) → NO registres todavía el feedback. Responde SOLO: "Lo sentimos mucho 😔 ¿Puedes explicarnos qué ocurrió para que podamos mejorar?"
+   - Cuando el cliente explique el motivo (mensaje siguiente tras haber respondido NO a la encuesta) → llama a registrar_feedback con valoracion="negativa" y el comentario con su explicación. Responde SOLO: "Gracias por comunicárnoslo 🙏 El electricista se pondrá en contacto contigo para resolver la incidencia. Si necesitas algo más, escribe *menú*."
    - IMPORTANTE: Las respuestas SI/NO a la encuesta NUNCA deben tratarse como opciones del menú principal.
 
 6. Nunca inventes información. Si no puedes resolver algo, ofrece que el electricista llame al cliente.`;
